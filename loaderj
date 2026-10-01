@@ -1,0 +1,342 @@
+-- ==========================================================
+-- ULTIMATE KAMIKAZE DRONE: HIGH FLIGHT + NO SPIN BUG
+-- ==========================================================
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+local Workspace = game:GetService("Workspace")
+local player = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
+local guiParent = CoreGui
+pcall(function()
+    if gethui then guiParent = gethui() end
+end)
+
+if guiParent:FindFirstChild("FinalDroneGUI") then
+    guiParent.FinalDroneGUI:Destroy()
+end
+
+local config = {
+    TorpedoActive = false,
+    AttackLock = false,
+    FlightSpeed = 105,
+    IsDead = false,
+    CameraMode = 1, -- 1 = Первое лицо, 2 = Третье лицо
+}
+
+-- ИНТЕРФЕЙС И ПРИЦЕЛ
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "FinalDroneGUI"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = guiParent
+
+-- Экран помех (белый фон при взрыве)
+local staticFrame = Instance.new("Frame", screenGui)
+staticFrame.Size = UDim2.new(1, 0, 1, 0)
+staticFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+staticFrame.BackgroundTransparency = 1
+staticFrame.Visible = false
+staticFrame.ZIndex = 20
+
+local staticText = Instance.new("TextLabel", staticFrame)
+staticText.Size = UDim2.new(1, 0, 1, 0)
+staticText.BackgroundTransparency = 1
+staticText.Text = "⚠️ NO SIGNAL ⚠️\n[ CONNECTION LOST ]"
+staticText.TextColor3 = Color3.fromRGB(0, 0, 0)
+staticText.TextSize, staticText.Font = 28, Enum.Font.Code
+staticText.TextWrapped = true
+staticText.ZIndex = 21
+
+-- Рамка прицела цели
+local targetBox = Instance.new("Frame", screenGui)
+targetBox.Size = UDim2.new(0, 70, 0, 70)
+targetBox.BackgroundTransparency = 1
+targetBox.Visible = false
+targetBox.ZIndex = 15
+
+local boxBorder = Instance.new("UIStroke", targetBox)
+boxBorder.Color = Color3.fromRGB(255, 0, 0)
+boxBorder.Thickness = 2
+
+local crosshairH = Instance.new("Frame", targetBox)
+crosshairH.Size = UDim2.new(1, 0, 0, 2)
+crosshairH.Position = UDim2.new(0, 0, 0.5, -1)
+crosshairH.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+crosshairH.BorderSizePixel = 0
+
+local crosshairV = Instance.new("Frame", targetBox)
+crosshairV.Size = UDim2.new(0, 2, 1, 0)
+crosshairV.Position = UDim2.new(0.5, -1, 0, 0)
+crosshairV.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+crosshairV.BorderSizePixel = 0
+
+local targetLabel = Instance.new("TextLabel", targetBox)
+targetLabel.Size = UDim2.new(1, 0, 0, 20)
+targetLabel.Position = UDim2.new(0, 0, 0, -22)
+targetLabel.BackgroundTransparency = 1
+targetLabel.Text = "ЦЕЛЬ"
+targetLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+targetLabel.TextSize, targetLabel.Font = 14, Enum.Font.SourceSansBold
+targetLabel.TextXAlignment = Enum.TextXAlignment.Center
+
+-- Панель управления
+local mainFrame = Instance.new("Frame", screenGui)
+mainFrame.Size = UDim2.new(0, 260, 0, 255)
+mainFrame.Position = UDim2.new(0.5, -130, 0.4, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 10)
+
+local title = Instance.new("TextLabel", mainFrame)
+title.Size = UDim2.new(1, 0, 0, 35)
+title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+title.Text = " 🚀 ДРОН: ФИКС КРУЖЕНИЯ У ЦЕЛИ"
+title.TextColor3 = Color3.fromRGB(0, 220, 255)
+title.TextSize, title.Font = 9, Enum.Font.SourceSansBold
+title.TextXAlignment = Enum.TextXAlignment.Left
+Instance.new("UICorner", title).CornerRadius = UDim.new(0, 10)
+
+local closeBtn = Instance.new("TextButton", title)
+closeBtn.Size = UDim2.new(0, 30, 0, 30)
+closeBtn.Position = UDim2.new(1, -32, 0, 2)
+closeBtn.BackgroundTransparency = 1
+closeBtn.Text = "—"
+closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeBtn.TextSize = 14
+
+local content = Instance.new("Frame", mainFrame)
+content.Size = UDim2.new(1, 0, 1, -35)
+content.Position = UDim2.new(0, 0, 0, 35)
+content.BackgroundTransparency = 1
+
+local isMin = false
+closeBtn.MouseButton1Click:Connect(function()
+    isMin = not isMin
+    closeBtn.Text = isMin and "+" or "—"
+    mainFrame.Size = isMin and UDim2.new(0, 260, 0, 35) or UDim2.new(0, 260, 0, 255)
+    content.Visible = not isMin
+end)
+
+-- Кнопка 1: Стойка
+local droneBtn = Instance.new("TextButton", content)
+droneBtn.Size = UDim2.new(1, -16, 0, 35)
+droneBtn.Position = UDim2.new(0, 8, 0, 8)
+droneBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+droneBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+droneBtn.TextSize, droneBtn.Font = 13, Enum.Font.SourceSansBold
+droneBtn.Text = "Стойка Дрона: ВЫКЛ"
+Instance.new("UICorner", droneBtn).CornerRadius = UDim.new(0, 6)
+
+droneBtn.MouseButton1Click:Connect(function()
+    config.TorpedoActive = not config.TorpedoActive
+    config.IsDead = false
+    staticFrame.Visible = false
+    targetBox.Visible = false
+    droneBtn.BackgroundColor3 = config.TorpedoActive and Color3.fromRGB(0, 140, 200) or Color3.fromRGB(40, 40, 40)
+    droneBtn.Text = "Стойка Дрона: " .. (config.TorpedoActive and "ВКЛ" or "ВЫКЛ")
+    
+    if not config.TorpedoActive then
+        Camera.CameraType = Enum.CameraType.Custom
+    end
+end)
+
+-- Кнопка 2: Пуск
+local targetBtn = Instance.new("TextButton", content)
+targetBtn.Size = UDim2.new(1, -16, 0, 35)
+targetBtn.Position = UDim2.new(0, 8, 0, 48)
+targetBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+targetBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+targetBtn.TextSize, targetBtn.Font = 13, Enum.Font.SourceSansBold
+targetBtn.Text = "Пуск (Атака): ВЫКЛ"
+Instance.new("UICorner", targetBtn).CornerRadius = UDim.new(0, 6)
+
+targetBtn.MouseButton1Click:Connect(function()
+    config.AttackLock = not config.AttackLock
+    targetBtn.BackgroundColor3 = config.AttackLock and Color3.fromRGB(200, 50, 50) or Color3.fromRGB(40, 40, 40)
+    targetBtn.Text = "Пуск: " .. (config.AttackLock and "ЛЕТИТ!" or "ВЫКЛ")
+end)
+
+-- Кнопка 3: Переключение камеры
+local camBtn = Instance.new("TextButton", content)
+camBtn.Size = UDim2.new(1, -16, 0, 35)
+camBtn.Position = UDim2.new(0, 8, 0, 88)
+camBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+camBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+camBtn.TextSize, camBtn.Font = 13, Enum.Font.SourceSansBold
+camBtn.Text = "Камера: 1-е Лицо"
+Instance.new("UICorner", camBtn).CornerRadius = UDim.new(0, 6)
+
+camBtn.MouseButton1Click:Connect(function()
+    if config.CameraMode == 1 then
+        config.CameraMode = 2
+        camBtn.Text = "Камера: 3-е Лицо"
+        camBtn.BackgroundColor3 = Color3.fromRGB(100, 50, 150)
+    else
+        config.CameraMode = 1
+        camBtn.Text = "Камера: 1-е Лицо"
+        camBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    end
+end)
+
+local infoLbl = Instance.new("TextLabel", content)
+infoLbl.Size = UDim2.new(1, -16, 0, 40)
+infoLbl.Position = UDim2.new(0, 8, 0, 130)
+infoLbl.BackgroundTransparency = 1
+infoLbl.TextColor3 = Color3.fromRGB(160, 160, 160)
+infoLbl.TextSize, infoLbl.Font = 11, Enum.Font.SourceSans
+infoLbl.Text = "Мгновенный подрыв устранен."
+infoLbl.TextWrapped = true
+
+-- СБРОС ПРИ ВОЗРОЖДЕНИИ
+player.CharacterAdded:Connect(function(newChar)
+    config.TorpedoActive = false
+    config.AttackLock = false
+    config.IsDead = false
+    staticFrame.Visible = false
+    targetBox.Visible = false
+    Camera.CameraType = Enum.CameraType.Custom
+    droneBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    droneBtn.Text = "Стойка Дрона: ВЫКЛ"
+    targetBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    targetBtn.Text = "Пуск: ВЫКЛ"
+end)
+
+-- ЛОГИКА ПОЛЕТА
+local raycastParams = RaycastParams.new()
+raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+local spinAngle = 0
+
+RunService.RenderStepped:Connect(function(dt)
+    local char = player.Character
+    if not char or config.IsDead then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    local head = char:FindFirstChild("Head")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not root or not hum or hum.Health <= 0 then return end
+
+    if config.TorpedoActive then
+        for _, p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide = false end
+        end
+        raycastParams.FilterDescendantsInstances = {char}
+
+        local bestTarget = nil
+        local bestScore = math.huge
+        
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                local tRoot = p.Character.HumanoidRootPart
+                local dist = (root.Position - tRoot.Position).Magnitude
+                local dirToTarget = (tRoot.Position - root.Position).Unit
+                local checkHit = Workspace:Raycast(root.Position, dirToTarget * dist, raycastParams)
+                
+                local obstaclePenalty = checkHit and 40 or 0
+                local totalScore = dist + obstaclePenalty
+                
+                if totalScore < bestScore then
+                    bestScore = totalScore
+                    bestTarget = tRoot
+                end
+            end
+        end
+
+        if bestTarget then
+            local vector, onScreen = Camera:WorldToViewportPoint(bestTarget.Position)
+            if onScreen then
+                targetBox.Visible = true
+                targetBox.Position = UDim2.new(0, vector.X - 35, 0, vector.Y - 35)
+            else
+                targetBox.Visible = false
+            end
+        else
+            targetBox.Visible = false
+        end
+
+        if config.AttackLock then
+            if bestTarget then
+                local targetPos = bestTarget.Position + Vector3.new(0, 3, 0)
+                local shortestDist = (root.Position - bestTarget.Position).Magnitude
+                local moveDir = (targetPos - root.Position).Unit
+
+                -- Если подлетели близко, отключаем обход препятствий, чтобы лететь строго в цель без дерганья
+                if shortestDist > 10 then
+                    local rayCenter = Workspace:Raycast(root.Position, moveDir * 18, raycastParams)
+                    local rayLeft   = Workspace:Raycast(root.Position, (moveDir + root.CFrame.RightVector * 0.7).Unit * 14, raycastParams)
+                    local rayRight  = Workspace:Raycast(root.Position, (moveDir - root.CFrame.RightVector * 0.7).Unit * 14, raycastParams)
+
+                    if rayCenter then
+                        if not rayLeft then
+                            moveDir = (moveDir - root.CFrame.RightVector * 1.5 + Vector3.new(0, 0.8, 0)).Unit
+                        elseif not rayRight then
+                            moveDir = (moveDir + root.CFrame.RightVector * 1.5 + Vector3.new(0, 0.8, 0)).Unit
+                        else
+                            moveDir = (moveDir + Vector3.new(math.random(-1, 1), 2.0, math.random(-1, 1))).Unit
+                        end
+                    end
+                end
+                
+                spinAngle = spinAngle + (dt * 5000)
+                local lookCF = CFrame.lookAt(root.Position, root.Position + moveDir) * CFrame.Angles(0, math.rad(-90), math.rad(90))
+                root.CFrame = lookCF * CFrame.Angles(0, 0, spinAngle)
+                root.Velocity = moveDir * config.FlightSpeed
+
+                Camera.CameraType = Enum.CameraType.Scriptable
+                if head then
+                    if config.CameraMode == 1 then
+                        Camera.CFrame = CFrame.new(head.Position + (moveDir * 0.5) + Vector3.new(0, 0.5, 0), head.Position + moveDir * 10)
+                    else
+                        Camera.CFrame = CFrame.new(root.Position - (moveDir * 10) + Vector3.new(0, 6, 0), root.Position)
+                    end
+                end
+
+                -- Увеличена дистанция детонации до 6 блоков, чтобы дрон гарантированно и сразу взрывался при подлете
+                if shortestDist < 6.0 then
+                    config.IsDead = true
+                    config.AttackLock = false
+                    config.TorpedoActive = false
+                    targetBox.Visible = false
+                    
+                    staticFrame.Visible = true
+                    staticFrame.BackgroundTransparency = 0
+                    
+                    hum.Health = 0
+                    hum:TakeDamage(99999)
+                    
+                    for _, p in ipairs(char:GetDescendants()) do
+                        if p:IsA("Motor6D") then
+                            p:Destroy()
+                        elseif p:IsA("BasePart") then
+                            p.Velocity = moveDir * 140 + Vector3.new(math.random(-50,50), 90, math.random(-50,50))
+                        end
+                    end
+                end
+            else
+                root.Velocity = Vector3.new(0, 0, 0)
+            end
+        else
+            local camLook = Camera.CFrame.LookVector
+            local flatLook = Vector3.new(camLook.X, 0, camLook.Z).Unit
+            if flatLook.Magnitude > 0 then
+                root.CFrame = CFrame.lookAt(root.Position, root.Position + flatLook) * CFrame.Angles(0, math.rad(-90), math.rad(90))
+            end
+            root.Velocity = Vector3.new(0, 0, 0)
+
+            Camera.CameraType = Enum.CameraType.Scriptable
+            if head then
+                if config.CameraMode == 1 then
+                    Camera.CFrame = CFrame.new(head.Position + Vector3.new(0, 1.0, 0), head.Position + flatLook * 10)
+                else
+                    Camera.CFrame = CFrame.new(root.Position - (flatLook * 8) + Vector3.new(0, 6, 0), root.Position)
+                end
+            end
+        end
+    else
+        targetBox.Visible = false
+    end
+end)
+
+print("[Final Drone]: Исправление кружения у цели применено!")
